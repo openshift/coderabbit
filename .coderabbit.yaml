@@ -75,5 +75,64 @@ reviews:
           5. **Consistency with codebase**: Tests should follow existing patterns in the
              repository for how fixtures are created, how clients are obtained, and how
              waits are structured.
+
+      - name: "MicroShift Compatibility"
+        mode: warning
+        instructions: |
+          When new Ginkgo e2e tests are added (It(), Describe(), Context(), When(), etc.),
+          check whether they use any APIs or features that are NOT available on MicroShift.
+          MicroShift is a single-node, minimal OpenShift distribution and does not support
+          all standard OpenShift APIs and features.
+
+          Flag the test if it references ANY of the following unavailable APIs or resources:
+          - ClusterOperator / ClusterOperators (config.openshift.io/v1)
+          - ClusterVersion / ClusterVersions (config.openshift.io/v1)
+          - Etcd operator or etcd pods (etcd.operator.openshift.io, openshift-etcd namespace)
+          - ClusterServiceVersion (CSV) / OLM resources (operators.coreos.com)
+          - MachineSet / Machine / MachineHealthCheck (machine.openshift.io)
+          - ClusterAutoscaler / MachineAutoscaler
+          - Console (console.openshift.io, openshift-console namespace)
+          - Monitoring stack components (prometheus-k8s, alertmanager, thanos-querier in openshift-monitoring)
+          - ImageRegistry operator (imageregistry.operator.openshift.io, openshift-image-registry namespace)
+          - Samples operator (samples.operator.openshift.io, openshift-cluster-samples-operator namespace)
+          - OperatorHub / CatalogSource / PackageManifest (operators.coreos.com, marketplace.redhat.com)
+          - CloudCredential / CredentialsRequest (cloudcredential.openshift.io)
+          - Storage operator (operator.openshift.io/v1 storage, openshift-cluster-storage-operator namespace)
+          - Network operator CRDs (operator.openshift.io/v1 network, openshift-network-operator namespace)
+
+          Flag the test if it makes ANY of the following unsupported assumptions:
+          - Multi-node or HA assumptions (e.g., expecting multiple master/control-plane nodes,
+            pod anti-affinity across nodes, leader election across replicas)
+          - FeatureGate resources or TechPreviewNoUpgrade / CustomNoUpgrade feature sets
+          - Upgrade or update workflows (ClusterVersion-based upgrades)
+          - Node scaling (expecting nodes to be added or removed)
+          - Multi-replica deployments of control-plane components
+
+          If a test is flagged, recommend the following:
+
+          > **MicroShift compatibility notice:** This test uses APIs or features that are
+          > not available on MicroShift. If this repository's presubmit CI does not already
+          > include MicroShift jobs, please verify your test works on MicroShift by running
+          > an additional CI job:
+          >
+          > For parallel tests:
+          > `/payload-job periodic-ci-openshift-microshift-release-4.22-periodics-e2e-aws-ovn-ocp-conformance`
+          >
+          > For serial tests (test name contains `[Serial]`):
+          > `/payload-job periodic-ci-openshift-microshift-release-4.22-periodics-e2e-aws-ovn-ocp-conformance-serial`
+          >
+          > If the test is intentionally not applicable to MicroShift, consider adding a
+          > `[Skipped:MicroShift]` label or guarding the test with a platform check.
+          >
+          > In the `openshift/origin` repository, the common pattern to skip a test on
+          > MicroShift is:
+          >
+          > ```go
+          > isMicroShift, err := exutil.IsMicroShiftCluster(oc.AdminKubeClient())
+          > o.Expect(err).NotTo(o.HaveOccurred())
+          > if isMicroShift {
+          >     g.Skip("Not supported on MicroShift")
+          > }
+          > ```
 chat:
   auto_reply: true
