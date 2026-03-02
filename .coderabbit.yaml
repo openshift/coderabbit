@@ -70,7 +70,7 @@ reviews:
              repository for how fixtures are created, how clients are obtained, and how
              waits are structured.
 
-      - name: "MicroShift Compatibility"
+      - name: "MicroShift Test Compatibility"
         mode: warning
         instructions: |
           When new Ginkgo e2e tests are added (It(), Describe(), Context(), When(), etc.),
@@ -128,5 +128,76 @@ reviews:
           >     g.Skip("Not supported on MicroShift")
           > }
           > ```
+
+      - name: "Single Node OpenShift (SNO) Test Compatibility"
+        mode: warning
+        instructions: |
+          When new Ginkgo e2e tests are added (It(), Describe(), Context(), When(), etc.),
+          check whether they make assumptions about multi-node or HA clusters. Single Node
+          OpenShift (SNO) runs the full OpenShift control plane and worker components on a
+          single node. Unlike MicroShift, SNO includes all standard OpenShift operators and
+          APIs, but any test that assumes multiple nodes will fail.
+
+          Flag the test if it makes ANY of the following multi-node or HA assumptions:
+          - Expects multiple control-plane/master nodes (e.g., counting master nodes > 1)
+          - Expects multiple worker nodes or schedules pods across distinct nodes
+          - Uses pod anti-affinity or topology spread constraints requiring multiple nodes
+          - Tests node-to-node communication patterns that require separate hosts
+          - Assumes leader election failover across multiple replicas on different nodes
+          - Expects pod rescheduling to a different node after node drain or failure
+          - Tests node scaling operations (adding or removing nodes)
+          - Assumes separate infra/worker/master node roles on different hosts
+          - Validates rolling updates that require scheduling to other nodes
+          - Tests ingress or load balancing behavior that depends on multiple endpoints
+            on different nodes
+
+          Do NOT flag tests that:
+          - Use OpenShift APIs and operators (these are all available on SNO)
+          - Run multiple pods on the same node
+          - Test single-pod behavior, even with multiple replicas (replicas can coexist on one node)
+
+          If a test is flagged, recommend the following:
+
+          > **Single Node OpenShift (SNO) compatibility notice:** This test assumes a
+          > multi-node cluster and may fail on Single Node OpenShift deployments. Please
+          > verify your test works on SNO by running an additional CI job:
+          >
+          > For parallel tests:
+          > `/payload-job periodic-ci-openshift-release-master-ci-4.22-e2e-aws-upgrade-ovn-single-node`
+          >
+          > For serial tests (test name contains `[Serial]`):
+          > `/payload-job periodic-ci-openshift-release-master-nightly-4.22-e2e-aws-ovn-single-node-serial`
+          >
+          > If the test is intentionally not applicable to SNO, the recommended approach
+          > in the `openshift/origin` repo is to check the cluster's control plane topology
+          > using the `exutil.IsSingleNode()` utility:
+          >
+          > ```go
+          > isSingleNode, err := exutil.IsSingleNode(context.Background(), oc.AdminConfigClient())
+          > o.Expect(err).NotTo(o.HaveOccurred())
+          > if isSingleNode {
+          >     g.Skip("Test requires multiple nodes and does not apply to single-node topologies")
+          > }
+          > ```
+          >
+          > This checks `infrastructure.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode`
+          > which is the canonical way to detect SNO clusters.
+          >
+          > Alternatively, some test packages define a local `skipOnSingleNodeTopology()` helper:
+          >
+          > ```go
+          > func skipOnSingleNodeTopology(oc *exutil.CLI) {
+          >     infra, err := oc.AdminConfigClient().ConfigV1().Infrastructures().Get(
+          >         context.Background(), "cluster", metav1.GetOptions{})
+          >     o.Expect(err).NotTo(o.HaveOccurred())
+          >     if infra.Status.ControlPlaneTopology == configv1.SingleReplicaTopologyMode {
+          >         e2eskipper.Skipf("This test does not apply to single-node topologies")
+          >     }
+          > }
+          > ```
+          >
+          > You can also use the `single_node.GetTopologies()` helper from
+          > `test/extended/single_node/topology.go` to get both control plane and
+          > infrastructure topology modes.
 chat:
   auto_reply: true
