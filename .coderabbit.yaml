@@ -199,5 +199,90 @@ reviews:
           > You can also use the `single_node.GetTopologies()` helper from
           > `test/extended/single_node/topology.go` to get both control plane and
           > infrastructure topology modes.
+
+      - name: "IPv6 and Disconnected Network Test Compatibility"
+        mode: warning
+        instructions: |
+          When new Ginkgo e2e tests are added (It(), Describe(), Context(), When(), etc.),
+          check whether they make assumptions about IPv4 networking or require connectivity
+          to external/public internet services. IPv6-only CI jobs run in disconnected
+          environments with no public internet access.
+
+          Flag the test if it contains ANY of the following IPv4 assumptions:
+          - Hardcoded IPv4 addresses (e.g., "10.0.0.1", "192.168.1.1", "172.16.0.0/12")
+          - Hardcoded IPv4 localhost ("127.0.0.1") where "::1" would also be needed
+          - Parsing or validating IPs assuming IPv4 format only (e.g., splitting on "." to parse octets)
+          - Creating Service or Endpoint objects with hardcoded IPv4 CIDRs or addresses
+          - Using net.ParseIP() or net.ParseCIDR() with hardcoded IPv4 values only
+          - Assuming pod or node IPs will be IPv4 (e.g., checking ip.To4() != nil without fallback)
+          - Hardcoded IPv4-only network policies (ipBlock with IPv4 CIDRs only)
+
+          Flag the test if it requires ANY of the following external connectivity:
+          - Connections to public internet hosts (e.g., google.com, github.com, quay.io, registry.redhat.io)
+          - Pulling images from public registries without using a mirror or internal registry
+          - Downloading content from external URLs (curl, wget to public endpoints)
+          - DNS resolution of public hostnames
+          - Connections to external APIs or services outside the cluster
+
+          Do NOT flag tests that:
+          - Use cluster-internal service DNS names (e.g., service.namespace.svc.cluster.local)
+          - Use the cluster's own registry or image streams
+          - Dynamically detect IP family and adapt accordingly
+
+          If a test is flagged, recommend the following:
+
+          > **IPv6 and disconnected network compatibility notice:** This test may contain
+          > IPv4 assumptions or external connectivity requirements that will fail in IPv6-only
+          > disconnected environments. Please verify your test works on IPv6 by running
+          > an additional CI job:
+          >
+          > For parallel tests:
+          > `/payload-job periodic-ci-openshift-release-master-nightly-4.22-e2e-metal-ipi-ovn-ipv6`
+          >
+          > For serial tests (test name contains `[Serial]`):
+          > `/payload-job periodic-ci-openshift-release-master-nightly-4.22-e2e-metal-ipi-serial-ovn-ipv6`
+          >
+          > In the `openshift/origin` repo, use `GetIPAddressFamily()` to detect the
+          > cluster's IP family and adapt accordingly:
+          >
+          > ```go
+          > hasIPv4, hasIPv6, err := GetIPAddressFamily(oc)
+          > o.Expect(err).NotTo(o.HaveOccurred())
+          > if !hasIPv4 {
+          >     // Use IPv6 addresses and CIDRs instead
+          > }
+          > ```
+          >
+          > Or use `GetIPFamilyForCluster()` to check the pod network IP family:
+          >
+          > ```go
+          > ipFamily := GetIPFamilyForCluster(oc.KubeFramework())
+          > if ipFamily == IPv6 {
+          >     g.Skip("Test requires IPv4 connectivity")
+          > }
+          > ```
+          >
+          > You can also use the `InIPv4ClusterContext()` wrapper to automatically skip
+          > tests that only apply to IPv4 clusters:
+          >
+          > ```go
+          > InIPv4ClusterContext(oc, func() {
+          >     // Test body - only runs on IPv4 clusters
+          > })
+          > ```
+          >
+          > For CIDRs, use `correctCIDRFamily()` to select the right CIDR for the cluster:
+          >
+          > ```go
+          > cidr := correctCIDRFamily(oc, "10.128.0.0/14", "fd01::/48")
+          > ```
+          >
+          > If the test requires external internet connectivity and cannot be adapted for
+          > disconnected environments, add `[Skipped:Disconnected]` to the test name to
+          > automatically skip it on disconnected clusters:
+          >
+          > ```go
+          > g.It("should fetch external content [Skipped:Disconnected]", func() { ... })
+          > ```
 chat:
   auto_reply: true
