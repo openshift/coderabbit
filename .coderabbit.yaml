@@ -19,7 +19,7 @@ reviews:
       - name: "Stable and Deterministic Test Names"
         mode: error
         instructions: |
-          Test names MUST be stable and deterministic. They must never contain dynamic
+          Ginkgo test names MUST be stable and deterministic. They must never contain dynamic
           information that changes between runs.
 
           Flag any test title (It(), Describe(), Context(), When(), etc.) that includes:
@@ -49,7 +49,7 @@ reviews:
       - name: "Test Structure and Quality"
         mode: warning
         instructions: |
-          Review test code for these quality requirements:
+          Review Ginkgo test code for these quality requirements:
 
           1. **Single responsibility**: Each test (It block) should test one specific behavior.
              Flag tests that assert multiple unrelated behaviors.
