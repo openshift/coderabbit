@@ -84,7 +84,13 @@ reviews:
           MicroShift is a single-node, minimal OpenShift distribution and does not support
           all standard OpenShift APIs and features.
 
+          Note: The only OpenShift kube APIs available on MicroShift are Route and
+          SecurityContextConstraints. All other OpenShift-specific APIs are unavailable.
+
           Flag the test if it references ANY of the following unavailable APIs or resources:
+          - Project / ProjectRequest (project.openshift.io) — use plain Namespaces instead
+          - Build / BuildConfig (build.openshift.io)
+          - DeploymentConfig (apps.openshift.io) — use Deployments instead
           - ClusterOperator / ClusterOperators (config.openshift.io/v1)
           - ClusterVersion / ClusterVersions (config.openshift.io/v1)
           - Etcd operator or etcd pods (etcd.operator.openshift.io, openshift-etcd namespace)
@@ -99,6 +105,13 @@ reviews:
           - CloudCredential / CredentialsRequest (cloudcredential.openshift.io)
           - Storage operator (operator.openshift.io/v1 storage, openshift-cluster-storage-operator namespace)
           - Network operator CRDs (operator.openshift.io/v1 network, openshift-network-operator namespace)
+          - Any other OpenShift API group besides Route (route.openshift.io) and
+            SecurityContextConstraints (security.openshift.io)
+
+          Flag the test if it references ANY of the following namespaces that do not exist on MicroShift:
+          - openshift-kube-apiserver
+          - openshift-kube-controller-manager
+          - openshift-kube-scheduler
 
           Flag the test if it makes ANY of the following unsupported assumptions:
           - Multi-node or HA assumptions (e.g., expecting multiple master/control-plane nodes,
