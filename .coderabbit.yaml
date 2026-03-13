@@ -262,6 +262,56 @@ reviews:
           > `test/extended/single_node/topology.go` to get both control plane and
           > infrastructure topology modes.
 
+      - name: "Single Node OpenShift (SNO) Scheduling Compatibility"
+        mode: warning
+        instructions: |
+          When deployment manifests, operator code, or controllers are added or modified,
+          check whether they introduce scheduling constraints or replica scaling logic
+          that will break on Single Node OpenShift (SNO) clusters, where only one node
+          exists.
+
+          Do NOT flag changes that already check for SingleReplicaTopologyMode or
+          single-node topology before applying these constraints.
+
+          Flag changes that introduce ANY of the following without SNO-awareness:
+
+          - **Required pod anti-affinity** (`requiredDuringSchedulingIgnoredDuringExecution`
+            with `topologyKey: kubernetes.io/hostname`). On SNO, this prevents replacement
+            pods from scheduling during rolling updates since there is no second node,
+            causing operators to hang in Progressing state indefinitely.
+          - **Replica count derived from node count** (e.g., counting control-plane nodes
+            and setting replicas to match). Combined with anti-affinity or rolling update
+            strategies, this breaks on SNO where only one node is available.
+          - **Pod topology spread constraints** with `whenUnsatisfiable: DoNotSchedule`
+            and a hostname topology key, which similarly blocks scheduling on single-node
+            clusters.
+          - **nodeSelector or nodeAffinity targeting control-plane/master nodes** (e.g.,
+            `node-role.kubernetes.io/master` or `node-role.kubernetes.io/control-plane`)
+            combined with required anti-affinity or multiple replicas. The nodeSelector
+            itself is fine on SNO (the single node has the control-plane label), but when
+            paired with anti-affinity it limits scheduling to a single eligible node while
+            simultaneously forbidding co-location, making rolling updates impossible.
+
+          If a change is flagged, recommend the following:
+
+          > **Single Node OpenShift (SNO) scheduling notice:** This change introduces
+          > scheduling constraints (pod anti-affinity, node-count-based replicas, or
+          > topology spread) that may prevent pods from scheduling on single-node
+          > clusters. On SNO, `requiredDuringSchedulingIgnoredDuringExecution` anti-affinity
+          > with a hostname topology key will block replacement pods during rolling updates,
+          > causing the operator to remain Progressing indefinitely.
+          >
+          > Please consider:
+          > - Using `preferredDuringSchedulingIgnoredDuringExecution` instead of `required`
+          > - Checking `infrastructure.Status.ControlPlaneTopology` for
+          >   `SingleReplicaTopologyMode` and adjusting behavior accordingly
+          > - Setting replicas to 1 and removing anti-affinity on SNO
+          >
+          > Verify with a single-node upgrade job before merging:
+          > ```
+          > /payload-job periodic-ci-openshift-release-main-ci-4.22-e2e-aws-upgrade-ovn-single-node
+          > ```
+
       - name: "IPv6 and Disconnected Network Test Compatibility"
         mode: warning
         instructions: |
