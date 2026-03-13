@@ -285,6 +285,12 @@ reviews:
           - **Pod topology spread constraints** with `whenUnsatisfiable: DoNotSchedule`
             and a hostname topology key, which similarly blocks scheduling on single-node
             clusters.
+          - **nodeSelector or nodeAffinity targeting control-plane/master nodes** (e.g.,
+            `node-role.kubernetes.io/master` or `node-role.kubernetes.io/control-plane`)
+            combined with required anti-affinity or multiple replicas. The nodeSelector
+            itself is fine on SNO (the single node has the control-plane label), but when
+            paired with anti-affinity it limits scheduling to a single eligible node while
+            simultaneously forbidding co-location, making rolling updates impossible.
 
           If a change is flagged, recommend the following:
 
