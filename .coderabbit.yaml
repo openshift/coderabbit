@@ -262,54 +262,112 @@ reviews:
           > `test/extended/single_node/topology.go` to get both control plane and
           > infrastructure topology modes.
 
-      - name: "Single Node OpenShift (SNO) Scheduling Compatibility"
+      - name: "Topology-Aware Scheduling Compatibility"
         mode: warning
         instructions: |
           When deployment manifests, operator code, or controllers are added or modified,
-          check whether they introduce scheduling constraints or replica scaling logic
-          that will break on Single Node OpenShift (SNO) clusters, where only one node
-          exists.
+          check whether they introduce scheduling constraints that assume a standard
+          highly-available (HA) topology with 3+ control-plane nodes and dedicated worker
+          nodes. OpenShift supports several topologies where these assumptions break:
 
-          Do NOT flag changes that already check for SingleReplicaTopologyMode or
-          single-node topology before applying these constraints.
+          - **Single Node OpenShift (SNO):** One node runs everything.
+            `ControlPlaneTopology = SingleReplica`, 1 schedulable node.
+          - **Two-Node Fixed (TNF):** Two control-plane nodes, no dedicated workers.
+            `ControlPlaneTopology = DualReplica` (tech preview; currently reported as
+            `SingleReplica`), 2 schedulable nodes. Operators should run 2 replicas
+            (not 1 as on SNO) to maintain HA. Required anti-affinity works with
+            exactly 2 replicas but not more.
+          - **Two-Node with Arbiter (TNA):** Two control-plane nodes plus a
+            resource-constrained arbiter node. The arbiter is NOT a master or worker
+            — it is a distinct role with label `node-role.kubernetes.io/arbiter` and
+            taint `node-role.kubernetes.io/arbiter:NoSchedule`. It only runs etcd
+            for quorum plus essential infrastructure (kubelet, SDN/OVN, MCD), and
+            may be as small as 2 cores / 8 GiB RAM. `ControlPlaneTopology =
+            HighlyAvailableArbiter` (tech preview; currently reported as
+            `HighlyAvailable`), but only 2 fully schedulable nodes.
+          - **External Control Plane (HyperShift):** Control plane runs outside the
+            hosted cluster. `ControlPlaneTopology = External`. There are NO nodes with
+            `node-role.kubernetes.io/master` or `node-role.kubernetes.io/control-plane`
+            labels in the hosted cluster.
 
-          Flag changes that introduce ANY of the following without SNO-awareness:
+          The `ControlPlaneTopology` values are defined in `openshift/api` as the
+          `TopologyMode` type:
+          - `HighlyAvailable` (default)
+          - `SingleReplica`
+          - `DualReplica` (tech preview, feature gate: `DualReplica`)
+          - `HighlyAvailableArbiter` (tech preview, feature gate: `HighlyAvailableArbiter`)
+          - `External`
+
+          Do NOT flag changes that already check `ControlPlaneTopology`, node counts,
+          or topology labels before applying scheduling constraints.
+
+          Flag changes that introduce ANY of the following without topology-awareness:
 
           - **Required pod anti-affinity** (`requiredDuringSchedulingIgnoredDuringExecution`
-            with `topologyKey: kubernetes.io/hostname`). On SNO, this prevents replacement
-            pods from scheduling during rolling updates since there is no second node,
-            causing operators to hang in Progressing state indefinitely.
-          - **Replica count derived from node count** (e.g., counting control-plane nodes
-            and setting replicas to match). Combined with anti-affinity or rolling update
-            strategies, this breaks on SNO where only one node is available.
+            with `topologyKey: kubernetes.io/hostname`). On SNO this prevents replacement
+            pods from scheduling during rolling updates. On TNF, replicas > 2 with
+            required anti-affinity cannot be satisfied. On TNA, only 2 nodes are fully
+            schedulable so the same limit applies.
           - **Pod topology spread constraints** with `whenUnsatisfiable: DoNotSchedule`
-            and a hostname topology key, which similarly blocks scheduling on single-node
-            clusters.
-          - **nodeSelector or nodeAffinity targeting control-plane/master nodes** (e.g.,
-            `node-role.kubernetes.io/master` or `node-role.kubernetes.io/control-plane`)
-            combined with required anti-affinity or multiple replicas. The nodeSelector
-            itself is fine on SNO (the single node has the control-plane label), but when
-            paired with anti-affinity it limits scheduling to a single eligible node while
-            simultaneously forbidding co-location, making rolling updates impossible.
+            and a hostname topology key. Breaks on SNO and is problematic when the spread
+            `maxSkew` exceeds the number of schedulable nodes (TNF, TNA).
+          - **Replica count derived from node count** (e.g., counting control-plane nodes
+            and setting replicas to match) without considering that SNO and TNF have
+            fewer than 3 control-plane nodes, and TNA's arbiter node should not run
+            general workloads.
+          - **nodeSelector or node affinity targeting control-plane nodes**
+            (`node-role.kubernetes.io/master` or `node-role.kubernetes.io/control-plane`).
+            On HyperShift, no nodes carry these labels — pods will remain Pending
+            indefinitely.
+          - **Scheduling workloads to all control-plane nodes equally** without excluding
+            arbiter nodes. On TNA, the arbiter node has a separate taint
+            (`node-role.kubernetes.io/arbiter:NoSchedule`) that blocks general
+            workloads. However, operators that use **broad or wildcard tolerations**
+            (e.g., tolerating all `NoSchedule` taints) will inadvertently schedule to
+            the resource-constrained arbiter. Only etcd and essential infrastructure
+            pods (kubelet, SDN/OVN, machine-config-daemon) should run on the arbiter.
+          - **Assuming dedicated worker nodes exist.** On SNO and TNF, all workloads
+            run on control-plane nodes. Code that targets only worker nodes via
+            `node-role.kubernetes.io/worker` nodeSelector may need to also consider
+            nodes that carry both control-plane and worker roles.
+          - **PodDisruptionBudgets designed for 3+ nodes.** On TNF and TNA, only 2
+            nodes are fully schedulable. PDBs with `minAvailable: 2` on a 2-replica
+            deployment will block all voluntary disruptions (drains, upgrades).
+            PDBs should be reviewed for topology-appropriate values.
 
           If a change is flagged, recommend the following:
 
-          > **Single Node OpenShift (SNO) scheduling notice:** This change introduces
-          > scheduling constraints (pod anti-affinity, node-count-based replicas, or
-          > topology spread) that may prevent pods from scheduling on single-node
-          > clusters. On SNO, `requiredDuringSchedulingIgnoredDuringExecution` anti-affinity
-          > with a hostname topology key will block replacement pods during rolling updates,
-          > causing the operator to remain Progressing indefinitely.
+          > **Topology-aware scheduling notice:** This change introduces scheduling
+          > constraints that may not work on all supported OpenShift topologies
+          > (SNO, Two-Node, HyperShift).
+          >
+          > OpenShift clusters vary in topology:
+          > | Topology | `ControlPlaneTopology` | Schedulable nodes |
+          > |---|---|---|
+          > | HA | `HighlyAvailable` | 3+ CP + N workers |
+          > | SNO | `SingleReplica` | 1 (all roles) |
+          > | Two-Node Fixed | `DualReplica` (TP) / `SingleReplica` | 2 CP (no workers) |
+          > | Two-Node + Arbiter | `HighlyAvailableArbiter` (TP) / `HighlyAvailable` | 2 CP + 1 arbiter (resource-limited) |
+          > | HyperShift | `External` | N workers (no CP nodes) |
           >
           > Please consider:
-          > - Using `preferredDuringSchedulingIgnoredDuringExecution` instead of `required`
-          > - Checking `infrastructure.Status.ControlPlaneTopology` for
-          >   `SingleReplicaTopologyMode` and adjusting behavior accordingly
-          > - Setting replicas to 1 and removing anti-affinity on SNO
+          > - Checking `infrastructure.Status.ControlPlaneTopology` to detect
+          >   `SingleReplica`, `DualReplica`, `HighlyAvailableArbiter`, or
+          >   `External` topologies
+          > - Using `preferredDuringSchedulingIgnoredDuringExecution` instead of
+          >   `required` anti-affinity
+          > - Capping replica counts to the number of schedulable nodes
+          > - Excluding arbiter nodes (`role.kubernetes.io/arbiter`) from workload
+          >   scheduling on TNA clusters
+          > - Avoiding `node-role.kubernetes.io/master` nodeSelectors on HyperShift,
+          >   where no control-plane nodes exist in-cluster
           >
-          > Verify with a single-node upgrade job before merging:
+          > Verify with topology-specific CI jobs before merging:
           > ```
           > /payload-job periodic-ci-openshift-release-main-ci-4.22-e2e-aws-upgrade-ovn-single-node
+          > /payload-job periodic-ci-openshift-release-main-nightly-4.22-e2e-aws-ovn-hypershift
+          > /payload-job periodic-ci-openshift-release-main-nightly-4.22-e2e-metal-ovn-two-node-arbiter
+          > /payload-job periodic-ci-openshift-release-main-nightly-4.22-e2e-metal-ovn-two-node-fencing-techpreview
           > ```
 
       - name: "IPv6 and Disconnected Network Test Compatibility"
