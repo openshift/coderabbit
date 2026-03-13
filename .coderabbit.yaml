@@ -262,6 +262,59 @@ reviews:
           > `test/extended/single_node/topology.go` to get both control plane and
           > infrastructure topology modes.
 
+      - name: "External Control Plane (HyperShift) Node Selector Compatibility"
+        mode: warning
+        instructions: |
+          When deployment manifests, operator code, or controllers are added or modified,
+          check whether they use node selectors or node affinity rules that target
+          control-plane or master nodes. On clusters with an External control plane
+          topology (HyperShift), the control plane runs outside the hosted cluster —
+          there are NO nodes with `node-role.kubernetes.io/master` or
+          `node-role.kubernetes.io/control-plane` labels in the hosted cluster.
+
+          Do NOT flag changes that already check for ExternalTopologyMode or
+          external control plane topology before applying these selectors.
+
+          Flag changes that introduce ANY of the following without topology-awareness:
+
+          - **nodeSelector targeting control-plane nodes**
+            (`node-role.kubernetes.io/master: ""` or
+            `node-role.kubernetes.io/control-plane: ""`). On External control plane
+            clusters, no nodes carry these labels, so pods will remain Pending
+            indefinitely.
+          - **Node affinity rules requiring control-plane nodes**
+            (`requiredDuringSchedulingIgnoredDuringExecution` with
+            `node-role.kubernetes.io/master` or `node-role.kubernetes.io/control-plane`
+            match expressions). Same result — pods will never schedule.
+          - **Tolerations for control-plane taints without a matching nodeSelector
+            guard** (`node-role.kubernetes.io/master:NoSchedule`). While tolerations
+            alone won't break scheduling, they suggest the code expects control-plane
+            nodes to exist and may have other implicit assumptions.
+
+          If a change is flagged, recommend the following:
+
+          > **External control plane (HyperShift) scheduling notice:** This change
+          > uses a nodeSelector or node affinity rule that targets control-plane /
+          > master nodes. On HyperShift hosted clusters
+          > (`Infrastructure.Status.ControlPlaneTopology == External`), there are no
+          > nodes with `node-role.kubernetes.io/master` or
+          > `node-role.kubernetes.io/control-plane` labels — the control plane runs
+          > outside the cluster. Pods with these selectors will remain Pending
+          > indefinitely.
+          >
+          > Please consider:
+          > - Checking `infrastructure.Status.ControlPlaneTopology` for
+          >   `ExternalTopologyMode` and using worker node selectors instead
+          > - Using `node-role.kubernetes.io/worker` as the selector on External
+          >   topology clusters
+          > - Removing the control-plane nodeSelector entirely if the workload does
+          >   not need to run on control-plane nodes specifically
+          >
+          > Verify with a HyperShift upgrade job before merging:
+          > ```
+          > /payload-job periodic-ci-openshift-release-master-nightly-4.22-e2e-aws-ovn-hypershift
+          > ```
+
       - name: "IPv6 and Disconnected Network Test Compatibility"
         mode: warning
         instructions: |
