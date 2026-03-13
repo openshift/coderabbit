@@ -236,6 +236,39 @@ reviews:
           - Assuming pod or node IPs will be IPv4 (e.g., checking ip.To4() != nil without fallback)
           - Hardcoded IPv4-only network policies (ipBlock with IPv4 CIDRs only)
 
+          Flag the test if it constructs URLs by interpolating a host/IP variable
+          directly into a URL string WITHOUT wrapping IPv6 addresses in square brackets.
+          IPv6 addresses in URLs MUST be enclosed in brackets per RFC 3986, or the URL
+          will be unparseable (e.g., `http://fd00::1:8080/path` is ambiguous and broken).
+
+          Common broken patterns to flag:
+          - `fmt.Sprintf("http://%s:%d/path", host, port)` — breaks with IPv6 host
+          - `fmt.Sprintf("https://%s:%s/path", ip, port)` — breaks with IPv6 ip
+          - `"http://" + host + ":" + port` — string concatenation without brackets
+          - `url := "http://" + addr + "/path"` — where addr could be an IPv6 address
+
+          The fix is to use `net.JoinHostPort()` to safely produce the `host:port` portion,
+          which automatically adds brackets for IPv6 addresses:
+
+          ❌ Bad:
+          ```go
+          url := fmt.Sprintf("http://%s:%d/foo", host, port)
+          url := fmt.Sprintf("https://%s:%s/metrics", ip, port)
+          url := "http://" + host + ":" + strconv.Itoa(port) + "/healthz"
+          ```
+
+          ✅ Good:
+          ```go
+          url := fmt.Sprintf("http://%s/foo", net.JoinHostPort(host, strconv.Itoa(port)))
+          url := fmt.Sprintf("https://%s/metrics", net.JoinHostPort(ip, port))
+          url := "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/healthz"
+          ```
+
+          Note: This only applies when the host/IP is a variable or could be an IPv6
+          address. Hardcoded hostnames like "localhost" or literal IPv4 addresses are
+          not affected (though hardcoded IPv4 addresses should still be flagged per
+          the rules above).
+
           Flag the test if it requires ANY of the following external connectivity:
           - Connections to public internet hosts (e.g., google.com, github.com, quay.io, registry.redhat.io)
           - Pulling images from public registries without using a mirror or internal registry
