@@ -273,18 +273,19 @@ reviews:
           - **Single Node OpenShift (SNO):** One node runs everything.
             `ControlPlaneTopology = SingleReplica`, 1 schedulable node.
           - **Two-Node Fixed (TNF):** Two control-plane nodes, no dedicated workers.
-            `ControlPlaneTopology = DualReplica` (tech preview; currently reported as
-            `SingleReplica`), 2 schedulable nodes. Operators should run 2 replicas
-            (not 1 as on SNO) to maintain HA. Required anti-affinity works with
-            exactly 2 replicas but not more.
+            `ControlPlaneTopology = DualReplica` (tech preview; requires the
+            `DualReplicaTopology` feature gate to install), 2 schedulable nodes.
+            Operators should run 2 replicas (not 1 as on SNO) to maintain HA.
+            Required anti-affinity works with exactly 2 replicas but not more.
           - **Two-Node with Arbiter (TNA):** Two control-plane nodes plus a
             resource-constrained arbiter node. The arbiter is NOT a master or worker
             — it is a distinct role with label `node-role.kubernetes.io/arbiter` and
             taint `node-role.kubernetes.io/arbiter:NoSchedule`. It only runs etcd
             for quorum plus essential infrastructure (kubelet, SDN/OVN, MCD), and
             may be as small as 2 cores / 8 GiB RAM. `ControlPlaneTopology =
-            HighlyAvailableArbiter` (tech preview; currently reported as
-            `HighlyAvailable`), but only 2 fully schedulable nodes.
+            HighlyAvailableArbiter` (tech preview; requires the
+            `HighlyAvailableArbiter` feature gate to install), but only 2 fully
+            schedulable nodes.
           - **External Control Plane (HyperShift):** Control plane runs outside the
             hosted cluster. `ControlPlaneTopology = External`. There are NO nodes with
             `node-role.kubernetes.io/master` or `node-role.kubernetes.io/control-plane`
@@ -346,8 +347,8 @@ reviews:
           > |---|---|---|
           > | HA | `HighlyAvailable` | 3+ CP + N workers |
           > | SNO | `SingleReplica` | 1 (all roles) |
-          > | Two-Node Fixed | `DualReplica` (TP) / `SingleReplica` | 2 CP (no workers) |
-          > | Two-Node + Arbiter | `HighlyAvailableArbiter` (TP) / `HighlyAvailable` | 2 CP + 1 arbiter (resource-limited) |
+          > | Two-Node Fixed | `DualReplica` (TP) | 2 CP (no workers) |
+          > | Two-Node + Arbiter | `HighlyAvailableArbiter` (TP) | 2 CP + 1 arbiter (resource-limited) |
           > | HyperShift | `External` | N workers (no CP nodes) |
           >
           > Please consider:
