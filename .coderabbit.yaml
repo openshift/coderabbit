@@ -584,7 +584,6 @@ reviews:
     - path: "**/{Dockerfile,Containerfile}*"
       instructions: |
         Container security (prodsec-skills):
-        - Base image: UBI minimal or distroless from catalog.redhat.com
         - Red Hat images: use floating tags (Red Hat manages updates);
           non-RH images: pin by digest
         - Multi-stage builds; no build tools in final image
