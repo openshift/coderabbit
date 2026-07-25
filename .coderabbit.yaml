@@ -508,6 +508,57 @@ reviews:
           > g.It("should fetch external content [Skipped:Disconnected]", func() { ... })
           > ```
 
+      - name: "Operator Controller DI Consistency"
+        mode: warning
+        instructions: |
+          This check applies only when a PR touches operator startup wiring
+          (starter.go, RunOperator) or controller constructors (New*Controller
+          functions) in OpenShift operator repositories. Skip this check if
+          the PR does not modify these files.
+
+          When evaluating, check for these rules:
+
+          1. INFORMERS: Controller constructors should accept individual typed
+             informers (e.g., configv1informers.InfrastructureInformer), not
+             SharedInformerFactory, raw cache.SharedIndexInformer, or bare
+             Listers. Exception: v1helpers.KubeInformersForNamespaces is
+             acceptable for multi-namespace kube resources.
+
+          2. CLIENTS: Controller constructors should accept the narrowest
+             client sub-interface needed (e.g., corev1client.SecretsGetter
+             over CoreV1Interface over kubernetes.Interface). Passing
+             *rest.Config to a controller constructor is a flag.
+
+          3. LIFECYCLE CONTRACT: Controllers must have a standard Run
+             signature: Run(ctx context.Context, workers int). Flag
+             non-standard signatures like Run(stopCh <-chan struct{}),
+             Run(workers int, stopCh <-chan struct{}), or any Run that
+             does not take (ctx, workers).
+
+          4. PARAMETER ORDER: Constructor parameters should follow:
+             operatorClient, KubeInformersForNamespaces, typed informers,
+             client interfaces, feature gate state, eventRecorder (last).
+
+          5. FEATURE GATES: The default pattern (resolved-at-construction)
+             passes resolved FeatureGate snapshots or extracted bools to
+             controllers after starter.go blocks on gate resolution. Flag
+             controllers receiving FeatureGateAccess unless they use the
+             resolved-at-sync pattern (no construction-time gate decisions,
+             defensive AreInitialFeatureGatesObserved check in sync). Flag
+             map[string]bool for feature gates (stringly-typed).
+
+          6. LISTER EXTRACTION: Controllers should extract listers from
+             informers internally (informer.Lister()). Flag starter.go
+             code that pre-extracts listers and passes them to controllers.
+             Flag constructors that take both an informer and its lister.
+
+          7. STARTER STRUCTURE: starter.go should follow five phases:
+             (1) Clients, (2) Informer Factories, (3) Feature Gates,
+             (4) Controllers, (5) Start. Flag client creation inside
+             controller packages, informer factory objects passed to
+             controller constructors, or controller logic defined inline
+             in starter.go.
+
       - name: "no-weak-crypto"
         instructions: |
           Flag MD5, SHA1, DES, RC4, 3DES, Blowfish, ECB mode usage.
@@ -529,8 +580,69 @@ reviews:
           hostnames, or customer data.
         mode: "error"
 
-  # Taken from prodsec suggested configuration: https://github.com/RedHatProductSecurity/prodsec-skills/blob/main/.coderabbit.yaml
   path_instructions:
+
+    # ── Operator starter.go (DI consistency) ────────────────────
+    - path: "**/pkg/operator/**/starter.go"
+      instructions: |
+        Operator starter file. Review for the five-phase structure:
+
+        Phase 1 - Clients: All clients created from ControllerContext
+        rest.Configs. No client creation elsewhere in the operator.
+
+        Phase 2 - Informer Factories: All shared informer factories
+        created here. Controllers must not receive shared informer
+        factory objects, except v1helpers.KubeInformersForNamespaces
+        for multi-namespace kube resources.
+
+        Phase 3 - Feature Gates: (3a) Start config informers early,
+        (3b) block on InitialFeatureGatesObserved with timeout,
+        (3c) resolve FeatureGate snapshot, extract per-gate bools.
+        The resolved-at-sync pattern (non-blocking) is also valid when
+        no construction-time or informer-registration decisions depend
+        on gates.
+
+        Phase 4 - Controllers: Each controller constructed with typed
+        informers extracted from factories here. CRD-conditional
+        informers (v1alpha1 CRDs gated by feature gates) accessed
+        inside if-blocks, relying on lazy creation. Feature gate
+        state passed as resolved bool or FeatureGate snapshot.
+
+        Phase 5 - Start: Start remaining informer factories (config
+        informers already started in Phase 3a). Start controllers
+        via go controller.Run(ctx, 1).
+
+        Flag: client creation inside controller packages, informer
+        factory objects passed to controllers, controllers constructed
+        before feature gates are resolved (when using
+        resolved-at-construction), controller logic or sync functions
+        defined inline in this file.
+
+    # ── Operator controller constructors (DI consistency) ───────
+    - path: "**/pkg/**/controller*.go"
+      instructions: |
+        If this file contains a controller constructor (New*Controller
+        or similar function returning a controller), review for:
+
+        - Typed informers (configv1informers.InfrastructureInformer),
+          not SharedInformerFactory or cache.SharedIndexInformer.
+          Exception: v1helpers.KubeInformersForNamespaces for
+          multi-namespace kube resources.
+          Exception: v1helpers.KubeInformersForNamespaces.
+        - Narrowest client sub-interface needed (SecretsGetter over
+          kubernetes.Interface). Never *rest.Config.
+        - Listers extracted internally (informer.Lister()), not
+          received as separate parameters from the caller.
+        - Feature gate state as resolved bool or FeatureGate snapshot,
+          not FeatureGateAccess, unless using the resolved-at-sync
+          pattern.
+        - Parameter order: operatorClient, KubeInformersForNamespaces,
+          typed informers, client interfaces, feature gate state,
+          eventRecorder (always last).
+        - Run signature: Run(ctx context.Context, workers int). Flag
+          non-standard signatures (Run(stopCh), Run(workers, stopCh)).
+
+    # Taken from prodsec suggested configuration: https://github.com/RedHatProductSecurity/prodsec-skills/blob/main/.coderabbit.yaml
 
     # ── Injection & input validation ─────────────────────────────
     # Skills: input-validation-injection, web-application-security
