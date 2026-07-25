@@ -591,7 +591,9 @@ reviews:
         rest.Configs. No client creation elsewhere in the operator.
 
         Phase 2 - Informer Factories: All shared informer factories
-        created here. Controllers never receive factory objects.
+        created here. Controllers must not receive shared informer
+        factory objects, except v1helpers.KubeInformersForNamespaces
+        for multi-namespace kube resources.
 
         Phase 3 - Feature Gates: (3a) Start config informers early,
         (3b) block on InitialFeatureGatesObserved with timeout,
@@ -624,6 +626,8 @@ reviews:
 
         - Typed informers (configv1informers.InfrastructureInformer),
           not SharedInformerFactory or cache.SharedIndexInformer.
+          Exception: v1helpers.KubeInformersForNamespaces for
+          multi-namespace kube resources.
           Exception: v1helpers.KubeInformersForNamespaces.
         - Narrowest client sub-interface needed (SecretsGetter over
           kubernetes.Interface). Never *rest.Config.
