@@ -64,6 +64,43 @@ reviews:
 
           Dynamic values belong in test BODIES (assertions, setup), never in test TITLES.
 
+          **Legacy openshift-tests-private naming conventions**: Tests ported from
+          openshift-tests-private often carry a metadata prefix in the title such as
+          `Author:shudili-NonHyperShiftHOST-ROSA-OSD_CCS-ARO-High-75909-`. Flag any test
+          title containing these tokens and ask for them to be removed:
+          - `Author:<name>` — authorship belongs in git history (git blame), not test names.
+          - `NonHyperShiftHOST` (any casing) — whether a test runs on HyperShift is
+            controlled by other mechanisms, not the test name.
+          - `ROSA`, `OSD_CCS`, `ARO` platform tokens — together these just mean "runs
+            everywhere" and add nothing. Tests specific to one of these platforms must be
+            selected via suite composition, not by encoding the platform in the test name.
+          - Importance levels such as `Critical`, `High`, `Medium`, `Low` — this is not how
+            OpenShift categorizes test importance.
+          - Polarion case IDs (a bare 5-6 digit number such as `75909`, often between
+            dashes) — Polarion is being deprecated and its IDs must not appear in test names.
+          - `ConnectedOnly` — not a convention in origin. To skip a test on disconnected
+            clusters, use the `[Skipped:Disconnected]` label instead.
+          - `StagerunOnly`, `NonPreRelease`, `Longduration` — these are not respected by
+            origin and do nothing; remove them.
+          - `PreChkUpgrade`, `PstChkUpgrade` — these do not hook into upgrade testing in
+            origin and will not do what the author expects. Pre/post-upgrade checks must
+            be integrated into origin's upgrade suites properly (likely using the `[Early]`
+            and `[Late]` labels).
+
+          When flagging any of the above, mention that authors can reach out in
+          #forum-ocp-release-oversight on Slack if they need help with these removals
+          during porting.
+
+          Standard bracketed labels such as `[sig-*]`, `[Feature:*]`, `[Disruptive]`,
+          `[Serial]`, `[Slow]`, `[Early]`, `[Late]`, `[apigroup:*]`, `[Skipped:*]`, and
+          `[Suite:*]` remain valid.
+
+          ❌ Bad example:
+          - `g.It("Author:shudili-NonHyperShiftHOST-ROSA-OSD_CCS-ARO-High-75909-Ingress Operator should not always remain in the progressing state [Disruptive]")`
+
+          ✅ Good example:
+          - `g.It("Ingress Operator should not always remain in the progressing state [Disruptive]")`
+
       - name: "Test Structure and Quality"
         mode: warning
         instructions: |
@@ -87,6 +124,16 @@ reviews:
           5. **Consistency with codebase**: Tests should follow existing patterns in the
              repository for how fixtures are created, how clients are obtained, and how
              waits are structured.
+
+          6. **Informing for new tests**: Newly added tests (including tests ported from
+             openshift-tests-private) may suddenly run in hundreds of jobs across many
+             configurations. When a PR adds a new It() block that does not use
+             `ote.Informing()`, suggest marking it informing. An informing test does NOT
+             fail the job when it fails, so authors can monitor results and fix problems
+             before promoting the test out of informing to become blocking. This is a
+             recommendation, not a requirement; do not flag existing tests or tests that
+             are intentionally being promoted to blocking.
+             ✅ `g.It("should always fail", ote.Informing(), func() { ... })`
 
       - name: "MicroShift Test Compatibility"
         mode: warning
