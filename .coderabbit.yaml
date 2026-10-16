@@ -74,10 +74,14 @@ reviews:
           - `ROSA`, `OSD_CCS`, `ARO` platform tokens — together these just mean "runs
             everywhere" and add nothing. Tests specific to one of these platforms must be
             selected via suite composition, not by encoding the platform in the test name.
-          - Importance levels such as `Critical`, `High`, `Medium`, `Low` — this is not how
-            OpenShift categorizes test importance.
-          - Polarion case IDs (a bare 5-6 digit number such as `75909`, often between
-            dashes) — Polarion is being deprecated and its IDs must not appear in test names.
+          - Importance levels such as `Critical`, `High`, `Medium`, `Low` used as
+            dash-delimited tokens in the legacy metadata prefix (for example,
+            `-High-75909-`) — this is not how OpenShift categorizes test importance. Do not
+            flag these words when they are part of a natural-language description.
+          - Polarion case IDs (a 5-6 digit number such as `75909` in the legacy metadata
+            prefix, for example `...-High-75909-...`) — Polarion is being deprecated and
+            its IDs must not appear in test names. Do not flag ordinary numeric values,
+            such as port numbers or sizes, without this legacy metadata context.
           - `ConnectedOnly` — not a convention in origin. To skip a test on disconnected
             clusters, use the `[Skipped:Disconnected]` label instead.
           - `StagerunOnly`, `NonPreRelease`, `Longduration` — these are not respected by
