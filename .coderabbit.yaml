@@ -563,7 +563,9 @@ reviews:
         instructions: |
           Flag MD5, SHA1, DES, RC4, 3DES, Blowfish, ECB mode usage.
           Flag custom crypto implementations. Flag non-constant-time
-          comparison of secrets or tokens.
+          comparison of secrets or tokens. Flag key sizes or curves that
+          are not permitted by FIPS140-3, and require checks on user-provided
+          values, unless code checks that FIPS mode is off.
         mode: "error"
 
       - name: "container-privileges"
